@@ -1,0 +1,34 @@
+node('joker-jnlp') {
+    stage('Clone') {
+      echo "1.Clone Stage"
+      git_url = "http://10.208.39.147:7080/dev1/stocktrading.git"
+      git branch: 'main', credentialsId: 'gitlab-147', url: "${git_url}"
+      script {
+          build_tag = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+      }
+      echo "${build_tag}"
+    }
+    stage('Test') {
+      echo "2.Test Stage"
+    }
+    stage('Build') {
+      echo "3.Build Docker Image Stage"
+      sh "sed -i 's/127.0.0.1/10.208.39.147/g' vars.py"
+      sh "docker build -f docker/Dockerfile -t 10.208.39.147/python/stocktrading:${build_tag} ."
+    }
+    stage('Push') {
+      echo "4.Push Docker Image Stage"
+      withCredentials([usernamePassword(credentialsId: 'harbor', passwordVariable: 'harborPassword', usernameVariable: 'harborUser')]) {
+        sh "docker login -u ${harborUser} 10.208.39.147 -p ${harborPassword}"
+        sh "docker push 10.208.39.147/python/stocktrading:${build_tag}"
+      }
+    }
+    stage('YAML') {
+      echo "5. Change YAML File Stage"
+      sh "sed -i 's/<BUILD_TAG>/${build_tag}/' docker/deploy.yaml"
+    }
+    stage('Deploy') {
+      echo "6. Deploy Stage"
+      sh "kubectl apply -f docker/deploy.yaml"
+    }
+}
